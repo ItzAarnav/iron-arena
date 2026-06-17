@@ -12,6 +12,7 @@ export class Engine {
     this.world = new Container(); // all world-space objects live here
     this.camera = null;
     this.entities = []; // anything with an optional update(dt) + syncView()
+    this.systems = []; // game-wide per-frame logic (collision, spawning, HUD)
   }
 
   // PixiJS v8 initializes asynchronously.
@@ -41,13 +42,42 @@ export class Engine {
   addEntity(entity) {
     this.entities.push(entity);
     if (entity.view) this.addToWorld(entity.view);
+    return entity;
+  }
+
+  // Flag an entity for removal; its view is destroyed during the next tick's
+  // cleanup pass. Deferred so callers can remove safely mid-iteration.
+  removeEntity(entity) {
+    entity.dead = true;
+  }
+
+  // Register game-wide logic run once per frame, after all entities have
+  // updated (so it sees fresh positions). Used for collision, spawning, HUD.
+  addSystem(fn) {
+    this.systems.push(fn);
   }
 
   #tick(dt) {
+    // 1. advance every entity, then push its state to its view
     for (const e of this.entities) {
       if (typeof e.update === "function") e.update(dt);
       if (typeof e.syncView === "function") e.syncView();
     }
-    this.camera.apply();
+    // 2. run game systems (may flag entities dead or spawn new ones)
+    for (const s of this.systems) s(dt);
+    // 3. reap anything flagged dead this frame and free its GPU resources
+    this.#removeDead();
+    // 4. move the camera last so it tracks the final positions
+    this.camera.apply(dt);
+  }
+
+  #removeDead() {
+    for (let i = this.entities.length - 1; i >= 0; i--) {
+      const e = this.entities[i];
+      if (e.dead) {
+        if (e.view) e.view.destroy({ children: true });
+        this.entities.splice(i, 1);
+      }
+    }
   }
 }

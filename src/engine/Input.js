@@ -6,6 +6,7 @@ export class Input {
   constructor(target = window) {
     this.keys = new Set(); // currently-held key codes (e.g. "KeyW")
     this.mouse = { x: 0, y: 0 }; // cursor position in screen (CSS) pixels
+    this.mouseLeft = false; // left button held (used for shooting)
 
     target.addEventListener("keydown", (e) => this.keys.add(e.code));
     target.addEventListener("keyup", (e) => this.keys.delete(e.code));
@@ -13,12 +14,26 @@ export class Input {
       this.mouse.x = e.clientX;
       this.mouse.y = e.clientY;
     });
-    // Drop held keys when the window loses focus so they don't get stuck.
-    window.addEventListener("blur", () => this.keys.clear());
+    window.addEventListener("mousedown", (e) => {
+      if (e.button === 0) this.mouseLeft = true;
+    });
+    window.addEventListener("mouseup", (e) => {
+      if (e.button === 0) this.mouseLeft = false;
+    });
+    // Drop held inputs when the window loses focus so nothing gets stuck.
+    window.addEventListener("blur", () => {
+      this.keys.clear();
+      this.mouseLeft = false;
+    });
   }
 
   isDown(code) {
     return this.keys.has(code);
+  }
+
+  // True while the left mouse button is held (continuous fire).
+  isFiring() {
+    return this.mouseLeft;
   }
 
   // Normalized WASD movement vector. (0,0) when idle; length 1 otherwise so
