@@ -12,6 +12,14 @@ export class Camera {
     this.target = null; // object with { x, y } to track each frame
     this.followSpeed = 0; // 0 = snap instantly; >0 = smooth lerp (units: 1/sec)
     this.bounds = null; // { minX, minY, maxX, maxY } the view is kept inside
+    this.shakeAmount = 0; // current shake magnitude in world units
+    this.shakeDecay = 30; // how fast it settles per second
+    this.shakeMax = 24; // cap so stacked shakes don't go wild
+  }
+
+  // Add a transient screen shake (e.g. on hits/explosions). Stacks up to a cap.
+  shake(amount) {
+    this.shakeAmount = Math.min(this.shakeAmount + amount, this.shakeMax);
   }
 
   // Center the camera on a world position.
@@ -54,10 +62,19 @@ export class Camera {
       this.y = clamp(this.y, this.bounds.minY, this.bounds.maxY, halfH);
     }
 
+    // A small random offset while shaking; decays back to zero.
+    let ox = 0;
+    let oy = 0;
+    if (this.shakeAmount > 0) {
+      ox = (Math.random() * 2 - 1) * this.shakeAmount;
+      oy = (Math.random() * 2 - 1) * this.shakeAmount;
+      this.shakeAmount = Math.max(0, this.shakeAmount - this.shakeDecay * dt);
+    }
+
     this.world.scale.set(this.zoom);
     this.world.position.set(
-      this.screen.width / 2 - this.x * this.zoom,
-      this.screen.height / 2 - this.y * this.zoom,
+      this.screen.width / 2 - (this.x + ox) * this.zoom,
+      this.screen.height / 2 - (this.y + oy) * this.zoom,
     );
   }
 }

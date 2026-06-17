@@ -65,6 +65,10 @@ export class Tank {
   update(dt) {
     if (this._fireTimer > 0) this._fireTimer -= dt;
     if (this._flash > 0) this._flash -= dt;
+
+    this.healthBar.set(this.hp / this.maxHp);
+    this.healthBar.update(dt);
+
     if (!this.input) return;
 
     const move = this.input.moveAxis();
@@ -124,6 +128,5 @@ export class Tank {
     this.body.rotation = this.rotation;
     const punch = this._flash > 0 ? 1 + 0.18 * (this._flash / FLASH_DURATION) : 1;
     this.body.scale.set(punch);
-    this.healthBar.set(this.hp / this.maxHp);
   }
 }

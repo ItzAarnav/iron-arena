@@ -1,30 +1,23 @@
 // A simple AI enemy: a colored circle that wanders the arena. Its "brain" is a
 // heading it nudges randomly every so often; it bounces off the arena walls so
-// it always stays inside. It has HP and a health bar, and takes damage from
-// player bullets (collision is resolved by the Game).
+// it always stays inside. Size/HP/speed/color/score/xp come from a tier object
+// (see GAME.enemy.tiers) so the same class covers small, medium, and large foes.
 
 import { Container } from "pixi.js";
-import { COLORS, GAME } from "../config.js";
 import { graphics, drawCircle } from "../render/shapes.js";
 import { HealthBar } from "../render/HealthBar.js";
 
 const FLASH_DURATION = 0.12;
 
 export class Enemy {
-  constructor({
-    x,
-    y,
-    radius = GAME.enemy.radius,
-    maxHp = GAME.enemy.maxHp,
-    speed = GAME.enemy.speed,
-    bounds,
-  }) {
+  constructor({ x, y, tier, bounds }) {
     this.x = x;
     this.y = y;
-    this.radius = radius;
-    this.maxHp = maxHp;
-    this.hp = maxHp;
-    this.speed = speed;
+    this.tier = tier; // { radius, hp, speed, color, score, xp }
+    this.radius = tier.radius;
+    this.maxHp = tier.hp;
+    this.hp = tier.hp;
+    this.speed = tier.speed;
     this.bounds = bounds;
     this.dead = false;
 
@@ -34,13 +27,17 @@ export class Enemy {
 
     this.view = new Container();
     this.body = new Container();
-    this.healthBar = new HealthBar();
-    this.#build();
+    // Scale the bar to the body so big enemies get a proportionate bar.
+    this.healthBar = new HealthBar(Math.max(40, tier.radius * 1.6));
+    this.#build(tier.color);
     this.syncView();
   }
 
   update(dt) {
     if (this._flash > 0) this._flash -= dt;
+
+    this.healthBar.set(this.hp / this.maxHp);
+    this.healthBar.update(dt);
 
     // Occasionally steer in a new random-ish direction (the "wander" behavior).
     this._wander -= dt;
@@ -80,9 +77,9 @@ export class Enemy {
     return 0.8 + Math.random() * 1.4; // 0.8–2.2s between heading changes
   }
 
-  #build() {
+  #build(color) {
     const circle = graphics();
-    drawCircle(circle, 0, 0, this.radius, COLORS.enemyBody);
+    drawCircle(circle, 0, 0, this.radius, color);
     this.body.addChild(circle);
     this.healthBar.view.position.set(0, -(this.radius + 16));
     this.view.addChild(this.body, this.healthBar.view);
@@ -92,6 +89,5 @@ export class Enemy {
     this.view.position.set(this.x, this.y);
     const punch = this._flash > 0 ? 1 + 0.18 * (this._flash / FLASH_DURATION) : 1;
     this.body.scale.set(punch);
-    this.healthBar.set(this.hp / this.maxHp);
   }
 }

@@ -5,10 +5,16 @@
 export class Input {
   constructor(target = window) {
     this.keys = new Set(); // currently-held key codes (e.g. "KeyW")
+    this.pressed = new Set(); // codes that went down since the last poll (edge)
     this.mouse = { x: 0, y: 0 }; // cursor position in screen (CSS) pixels
     this.mouseLeft = false; // left button held (used for shooting)
 
-    target.addEventListener("keydown", (e) => this.keys.add(e.code));
+    target.addEventListener("keydown", (e) => {
+      // Tab would otherwise move focus out of the canvas; we use it for the menu.
+      if (e.code === "Tab") e.preventDefault();
+      if (!this.keys.has(e.code)) this.pressed.add(e.code); // first frame only
+      this.keys.add(e.code);
+    });
     target.addEventListener("keyup", (e) => this.keys.delete(e.code));
     window.addEventListener("mousemove", (e) => {
       this.mouse.x = e.clientX;
@@ -23,12 +29,21 @@ export class Input {
     // Drop held inputs when the window loses focus so nothing gets stuck.
     window.addEventListener("blur", () => {
       this.keys.clear();
+      this.pressed.clear();
       this.mouseLeft = false;
     });
   }
 
   isDown(code) {
     return this.keys.has(code);
+  }
+
+  // Edge trigger: true once per physical key press, then consumed. Use for
+  // toggles/menus (Tab, number keys) so a held key doesn't fire every frame.
+  wasPressed(code) {
+    if (!this.pressed.has(code)) return false;
+    this.pressed.delete(code);
+    return true;
   }
 
   // True while the left mouse button is held (continuous fire).
