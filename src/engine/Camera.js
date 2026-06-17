@@ -10,6 +10,8 @@ export class Camera {
     this.y = 0;
     this.zoom = 1;
     this.target = null; // object with { x, y } to track each frame
+    this.followSpeed = 0; // 0 = snap instantly; >0 = smooth lerp (units: 1/sec)
+    this.bounds = null; // { minX, minY, maxX, maxY } the view is kept inside
   }
 
   // Center the camera on a world position.
@@ -34,16 +36,35 @@ export class Camera {
   }
 
   // Apply the current camera state to the world container. Call once per frame
-  // after positions update.
-  apply() {
+  // after positions update, passing the frame delta for smooth following.
+  apply(dt = 0) {
     if (this.target) {
-      this.x = this.target.x;
-      this.y = this.target.y;
+      // Frame-rate-independent exponential smoothing toward the target. With
+      // followSpeed 0 (or dt 0) this collapses to an instant snap.
+      const t = this.followSpeed > 0 && dt > 0 ? 1 - Math.exp(-this.followSpeed * dt) : 1;
+      this.x += (this.target.x - this.x) * t;
+      this.y += (this.target.y - this.y) * t;
     }
+
+    // Keep the visible rectangle inside the arena so the void never shows.
+    if (this.bounds) {
+      const halfW = this.screen.width / (2 * this.zoom);
+      const halfH = this.screen.height / (2 * this.zoom);
+      this.x = clamp(this.x, this.bounds.minX, this.bounds.maxX, halfW);
+      this.y = clamp(this.y, this.bounds.minY, this.bounds.maxY, halfH);
+    }
+
     this.world.scale.set(this.zoom);
     this.world.position.set(
       this.screen.width / 2 - this.x * this.zoom,
       this.screen.height / 2 - this.y * this.zoom,
     );
   }
+}
+
+// Clamp `v` to [min, max] inset by `half`. If the span is narrower than the
+// viewport, center on it instead (avoids jitter when the arena is small).
+function clamp(v, min, max, half) {
+  if (max - min <= half * 2) return (min + max) / 2;
+  return Math.min(Math.max(v, min + half), max - half);
 }
