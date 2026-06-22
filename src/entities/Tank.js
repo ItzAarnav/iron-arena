@@ -9,7 +9,8 @@
 
 import { Container } from "pixi.js";
 import { COLORS, GAME } from "../config.js";
-import { graphics, drawCircle, drawRect } from "../render/shapes.js";
+import { graphics, drawCircle, darken } from "../render/shapes.js";
+import { turretBarrels } from "../render/turret.js";
 import { HealthBar } from "../render/HealthBar.js";
 import { approachAngle } from "../utils/angle.js";
 
@@ -28,6 +29,7 @@ export class Tank {
     input = null, // Input instance; null = not player-controlled
     camera = null, // needed to convert cursor screen pos -> world pos
     bounds = null, // arena bounds to stay inside
+    turret = "single", // barrel layout (see render/turret.js)
   } = {}) {
     this.x = x;
     this.y = y;
@@ -51,13 +53,15 @@ export class Tank {
     this.level = 1; // structural only for bots (1–3); no gameplay effect yet
 
     this.armor = 0; // fraction of incoming damage blocked (0..1), set by upgrades
+    this.turret = turret; // current barrel layout name
     this.barrelLength = radius * 2.2; // muzzle distance from center (for spawning bullets)
     this._fireTimer = 0; // counts down to next allowed shot
     this._flash = 0; // counts down the hit-punch animation
     this.dead = false;
 
     this.view = new Container();
-    this.body = new Container(); // holds barrel + circle; this is what rotates
+    this.body = new Container(); // holds barrels + circle; this is what rotates
+    this.barrels = new Container(); // turret barrels (rebuilt by setWeapon)
     this.healthBar = new HealthBar();
     this.#build(color);
     this.syncView();
@@ -122,20 +126,41 @@ export class Tank {
     this._flash = FLASH_DURATION;
   }
 
-  // Builds the tank's geometry once. Barrel first so the body draws over its base.
+  // Builds the tank's geometry once. Barrels first (in their own container) so
+  // the body circle draws over their bases.
   #build(color) {
-    const barrelWidth = this.radius * 0.6;
-
-    const barrel = graphics();
-    // barrel points along +x (rotation 0 = facing right); base sits at origin
-    drawRect(barrel, this.barrelLength / 2, 0, this.barrelLength, barrelWidth, COLORS.tankBarrel);
+    this.#buildTurret(this.turret);
 
     this.circle = graphics();
     drawCircle(this.circle, 0, 0, this.radius, color);
 
-    this.body.addChild(barrel, this.circle);
+    this.body.addChild(this.barrels, this.circle);
     this.healthBar.view.position.set(0, -(this.radius + 16));
     this.view.addChild(this.body, this.healthBar.view);
+  }
+
+  // (Re)draw the turret barrels for a layout name (see render/turret.js). Each
+  // barrel is a rect extending from the center along its own angle, with an
+  // optional perpendicular offset for side-by-side barrels.
+  #buildTurret(turret) {
+    this.turret = turret;
+    this.barrels.removeChildren().forEach((c) => c.destroy());
+    for (const b of turretBarrels(turret, this.radius)) {
+      const g = graphics();
+      g.rect(0, -b.width / 2, b.length, b.width)
+        .fill(COLORS.tankBarrel)
+        .stroke({ color: darken(COLORS.tankBarrel), width: 4, alignment: 0.5 });
+      g.rotation = b.angle;
+      // shift sideways (perpendicular to the barrel's own direction)
+      g.position.set(-Math.sin(b.angle) * b.perp, Math.cos(b.angle) * b.perp);
+      this.barrels.addChild(g);
+    }
+  }
+
+  // Live-change the equipped weapon's turret (used by the Arsenal picker and the
+  // player loadout). `weapon` is a GAME.weapons entry.
+  setWeapon(weapon) {
+    this.#buildTurret(weapon?.turret || "single");
   }
 
   // Live-change the body color (used by the cosmetics picker in the waiting room).

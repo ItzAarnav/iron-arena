@@ -50,9 +50,9 @@ export class UpgradeHud {
   #buildTooltip() {
     const c = new Container();
     c.bg = new Graphics();
-    c.name = new Text({ text: "", style: { fill: COLORS.hudText, fontFamily: "Arial", fontSize: 14, fontWeight: "bold" } });
-    c.rarity = new Text({ text: "", style: { fill: COLORS.hudDim, fontFamily: "Arial", fontSize: 12 } });
-    c.effect = new Text({ text: "", style: { fill: COLORS.hudDim, fontFamily: "Arial", fontSize: 12, wordWrap: true, wordWrapWidth: 180 } });
+    c.name = new Text({ text: "", style: { fill: COLORS.hudText, fontFamily: "Ubuntu, Arial", fontSize: 14, fontWeight: "bold" } });
+    c.rarity = new Text({ text: "", style: { fill: COLORS.hudDim, fontFamily: "Ubuntu, Arial", fontSize: 12 } });
+    c.effect = new Text({ text: "", style: { fill: COLORS.hudDim, fontFamily: "Ubuntu, Arial", fontSize: 12, wordWrap: true, wordWrapWidth: 180 } });
     c.name.position.set(10, 8);
     c.rarity.position.set(10, 28);
     c.effect.position.set(10, 46);

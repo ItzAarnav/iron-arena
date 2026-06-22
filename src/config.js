@@ -138,11 +138,56 @@ export const GAME = {
     { name: "Violet", color: 0x9b6cff },
   ],
 
-  // Weapons (placeholder loadouts). `barrels` fires that many bullets with a
-  // small spread; the *Mul fields scale the player's fire rate / damage / speed.
+  // Weapons. Index 0 (Standard) is always unlocked; the rest unlock through the
+  // Iron Path (one per `ironPath.unlockEvery` levels, in this order). `turret`
+  // names the visual barrel layout (rendered by render/turret.js for both the
+  // in-world tank and the Arsenal card previews). `barrels` is how many bullets
+  // fire per shot (small spread); the *Mul fields scale fire interval / damage /
+  // bullet speed. fireRateMul < 1 = shoots faster (smaller interval).
   weapons: [
-    { name: "Standard", barrels: 1 },
-    { name: "Twin", barrels: 2, fireRateMul: 1.15 },
-    { name: "Sniper", barrels: 1, fireRateMul: 1.8, damageMul: 1.6, bulletSpeedMul: 1.4 },
+    { name: "Standard", turret: "single", barrels: 1 },
+    { name: "Dual Barrel", turret: "dual", barrels: 2, fireRateMul: 1.1 },
+    { name: "Machine Gun", turret: "wide", barrels: 1, fireRateMul: 0.5, damageMul: 0.7 },
+    { name: "Flank", turret: "flank", barrels: 2, fireRateMul: 1.0 },
+    { name: "Sniper", turret: "long", barrels: 1, fireRateMul: 1.8, damageMul: 1.6, bulletSpeedMul: 1.4 },
+    { name: "Triple Shot", turret: "triple", barrels: 3, fireRateMul: 1.2 },
+    { name: "Rocketeer", turret: "rocket", barrels: 1, fireRateMul: 1.6, damageMul: 1.8, bulletSpeedMul: 0.8 },
+    { name: "Penta-Shot", turret: "penta", barrels: 5, fireRateMul: 1.3, damageMul: 0.8 },
+    { name: "Pounder", turret: "pounder", barrels: 1, fireRateMul: 1.5, damageMul: 1.9 },
+    { name: "Cannoneer", turret: "cannon", barrels: 2, fireRateMul: 1.25, damageMul: 1.2 },
+    { name: "Laser Rifle", turret: "laser", barrels: 1, fireRateMul: 1.4, damageMul: 1.5, bulletSpeedMul: 1.8 },
   ],
+
+  // Iron Path: a 1..maxLevel meta-progression. A weapon unlocks every
+  // `unlockEvery` levels (level 6 -> weapon 1, level 12 -> weapon 2, ...).
+  // XP is earned per match (kills + survival + a win bonus) and persisted on the
+  // Profile; `level = floor(totalXp / xpPerLevel) + 1`, capped at maxLevel.
+  ironPath: {
+    maxLevel: 60,
+    unlockEvery: 6,
+    xpPerLevel: 600, // total XP needed for each level step
+    xpPerKill: 60,
+    xpPerSecond: 1, // survival reward
+    winBonus: 500,
+  },
+
+  // Loot crates: world containers holding 3 upgrade items (mostly normals, with
+  // a small chance of a special). The player opens one by touching it; it grants
+  // all 3 at once. Counts are per rarity zone (outer -> center). Crates outside
+  // the toxic fog are consumed by it (so loot thins as the safe zone shrinks).
+  crate: {
+    radius: 30,
+    items: 3,
+    specialChance: 0.25, // chance any one item in a crate is a special
+    perZone: [2, 4, 4, 6], // [center, middle, inner, outside] — matches ZONES order
+  },
+
+  // Endgame pressure: as the roster thins the fog accelerates and forces a
+  // final confrontation. Counts are total entities still alive (player + bots).
+  endgame: {
+    compressAt: 10, // <= this many alive: fog shrinks faster
+    compressMul: 1.7,
+    finalAt: 5, // <= this many alive: final phase (fog dominates, loot rare)
+    finalMul: 2.6,
+  },
 };

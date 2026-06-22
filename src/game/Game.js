@@ -21,11 +21,13 @@ import { Bullet } from "../entities/Bullet.js";
 import { Particle } from "../entities/Particle.js";
 import { DamageNumber } from "../entities/DamageNumber.js";
 import { UpgradePickup } from "../entities/UpgradePickup.js";
+import { Crate } from "../entities/Crate.js";
 import { Drone } from "../entities/Drone.js";
 import { BotBrain } from "./BotBrain.js";
 import { GuardianBrain } from "./GuardianBrain.js";
 import { Fog } from "./Fog.js";
 import { UpgradeState } from "./UpgradeState.js";
+import { earnedXp } from "./IronPath.js";
 import {
   ZONES,
   NORMAL_TYPES,
@@ -36,6 +38,7 @@ import {
 } from "./upgrades.js";
 import { Hud } from "../ui/Hud.js";
 import { UpgradeHud } from "../ui/UpgradeHud.js";
+import { Minimap } from "../ui/Minimap.js";
 import { createGrid } from "../render/Grid.js";
 import { createArenaFloor, createArenaBorder } from "../render/Arena.js";
 import { COLORS, WORLD, GAME } from "../config.js";
@@ -54,6 +57,7 @@ export class Game {
     this.bots = [];
     this.guardians = [];
     this.pickups = [];
+    this.crates = [];
     this.player = null;
     this.profile = null;
     this.weapon = GAME.weapons[0];
@@ -65,7 +69,8 @@ export class Game {
     this._flashCd = 0;
     this.showFps = false;
     this.phase = "idle";
-    this.combatEnabled = false;
+    this.combatEnabled = false; // shooting allowed (waiting room + match)
+    this.damageEnabled = false; // hits/kills/upgrades/fog register (match only)
     this.countdown = 0;
 
     const cam = engine.camera;
@@ -80,10 +85,13 @@ export class Game {
     this.hud.view.visible = false;
     this.upgradeHud = new UpgradeHud(engine.app);
     this.upgradeHud.view.visible = false;
+    this.minimap = new Minimap(engine.app);
+    this.minimap.view.visible = false;
 
     engine.app.renderer.on("resize", () => {
       this.hud.layout();
       this.upgradeHud.layout();
+      this.minimap.layout();
     });
 
     engine.addSystem((dt) => this.update(dt));
@@ -101,8 +109,10 @@ export class Game {
     for (let i = 0; i < 5; i++) this.#spawnBot();
     this.phase = "menu";
     this.combatEnabled = false;
+    this.damageEnabled = false;
     this.hud.view.visible = false;
     this.upgradeHud.view.visible = false;
+    this.minimap.view.visible = false;
   }
 
   enterWaiting(profile) {
@@ -114,10 +124,14 @@ export class Game {
     this.#spawnPlayer();
     for (let i = 0; i < GAME.match.waitingBots; i++) this.#spawnBot();
     this.phase = "waiting";
-    this.combatEnabled = false;
+    // Waiting room: shooting + previews ON for loadout testing, but no damage,
+    // kills, upgrades, or XP.
+    this.combatEnabled = true;
+    this.damageEnabled = false;
     this.countdown = GAME.match.countdown;
     this.hud.view.visible = false;
     this.upgradeHud.view.visible = false;
+    this.minimap.view.visible = false;
   }
 
   // Begin the match: real arena, teleport in, fixed BR roster, guardians,
@@ -137,15 +151,18 @@ export class Game {
 
     this.#spawnGuardians();
     this.#spawnPickups();
+    this.#spawnCrates();
     this.fog.reset();
 
     this.phase = "playing";
     this.combatEnabled = true;
+    this.damageEnabled = true;
     this.kills = 0;
     this.matchStartTime = performance.now();
     this.input.pressed.clear();
     this.hud.view.visible = true;
     this.upgradeHud.view.visible = true;
+    this.minimap.view.visible = true;
     this.upgradeHud.refresh(this.upgrades);
     this.#applyStats();
   }
@@ -159,7 +176,10 @@ export class Game {
   setWeapon(index) {
     if (this.profile) this.profile.weapon = index;
     this.weapon = GAME.weapons[index] || GAME.weapons[0];
-    if (this.player) this.#applyStats();
+    if (this.player) {
+      this.player.setWeapon(this.weapon); // swap the visible turret
+      this.#applyStats();
+    }
   }
 
   update(dt) {
@@ -170,6 +190,8 @@ export class Game {
       if (this._flashCd > 0) this._flashCd -= dt;
     }
 
+    // Shooting is allowed in the waiting room too (loadout testing), but only the
+    // live match resolves hits, upgrades, fog, and the endgame.
     if (this.combatEnabled) {
       if (this.input.isFiring()) this.#firePlayer();
       for (const bot of this.bots) {
@@ -182,11 +204,16 @@ export class Game {
           if (shot) this.#spawnBullet(shot, "guardian");
         }
       }
+    }
+
+    if (this.damageEnabled) {
       this.#bulletHits();
       this.#contactDamage(dt);
       this.#collectPickups();
-      this.fog.update(dt);
+      this.#openCrates();
+      this.fog.update(dt, this.#fogIntensity());
       this.#fogDamage(dt);
+      this.#consumeLootInFog();
       this.#specialsPassive(dt);
     }
 
@@ -206,6 +233,7 @@ export class Game {
     this.bots = this.bots.filter((b) => !b.dead);
     this.guardians = this.guardians.filter((g) => !g.dead);
     this.pickups = this.pickups.filter((p) => !p.dead);
+    this.crates = this.crates.filter((c) => !c.dead);
     if (this.sentryDrone && this.sentryDrone.dead) this.sentryDrone = null;
     if (this.lootDrone && this.lootDrone.dead) this.lootDrone = null;
 
@@ -223,6 +251,43 @@ export class Game {
         },
         dt,
       );
+      this.minimap.update({
+        player: this.player,
+        bots: this.bots,
+        guardians: this.guardians,
+        crates: this.crates,
+        fogRadius: this.fog.radius,
+      });
+    }
+  }
+
+  // --- endgame --------------------------------------------------------------
+
+  // Total tanks still in the running (player + bots; guardians are environmental).
+  #aliveCount() {
+    return this.bots.length + (this.player && !this.player.dead ? 1 : 0);
+  }
+
+  // Fog shrink multiplier: accelerates as the roster thins, dominating the map
+  // in the final phase so encounters are forced.
+  #fogIntensity() {
+    const alive = this.#aliveCount();
+    if (alive <= GAME.endgame.finalAt) return GAME.endgame.finalMul;
+    if (alive <= GAME.endgame.compressAt) return GAME.endgame.compressMul;
+    return 1;
+  }
+
+  // Loot left outside the shrinking safe zone is lost to the fog — so crates
+  // (and pickups) naturally become rarer as the endgame closes in.
+  #consumeLootInFog() {
+    for (const c of this.crates) {
+      if (!c.dead && this.fog.isOutside(c.x, c.y)) {
+        c.dead = true;
+        this.#burst(c.x, c.y, GAME.fog.color, 6);
+      }
+    }
+    for (const p of this.pickups) {
+      if (!p.dead && this.fog.isOutside(p.x, p.y)) p.dead = true;
     }
   }
 
@@ -379,15 +444,19 @@ export class Game {
   #onWin() {
     this.phase = "won";
     this.combatEnabled = false;
+    this.damageEnabled = false;
     const survival = (performance.now() - this.matchStartTime) / 1000;
     this.hud.view.visible = false;
     this.upgradeHud.view.visible = false;
+    this.minimap.view.visible = false;
+    const xp = this.#awardXp(survival, true);
     this.callbacks.onWin?.({
       name: this.profile.displayName,
       title: "CHAMPION",
       kills: this.kills,
       survival,
       score: this.score,
+      xp,
     });
   }
 
@@ -395,13 +464,27 @@ export class Game {
     if (this.phase !== "playing") return;
     this.phase = "dead";
     this.combatEnabled = false;
+    this.damageEnabled = false;
     const survival = (performance.now() - this.matchStartTime) / 1000;
     this.#burst(this.player.x, this.player.y, this.player.color, 30);
     this.engine.camera.shake(20);
     this.player.dead = true;
     this.hud.view.visible = false;
     this.upgradeHud.view.visible = false;
-    this.callbacks.onMatchEnd?.({ killedBy: killer, survival, kills: this.kills, score: this.score });
+    this.minimap.view.visible = false;
+    const xp = this.#awardXp(survival, false);
+    this.callbacks.onMatchEnd?.({ killedBy: killer, survival, kills: this.kills, score: this.score, xp });
+  }
+
+  // Compute Iron Path XP for the finished match, add it to the profile, persist,
+  // and return the amount earned (for the results screen).
+  #awardXp(survival, won) {
+    const xp = earnedXp({ kills: this.kills, survival, won });
+    if (this.profile) {
+      this.profile.addIronPathXp(xp);
+      this.profile.save();
+    }
+    return xp;
   }
 
   // --- pickups + upgrades ---------------------------------------------------
@@ -479,6 +562,67 @@ export class Game {
     this.engine.addEntity(pk);
   }
 
+  // --- crates ---------------------------------------------------------------
+
+  // Loot crates per rarity zone. Each holds GAME.crate.items upgrade items
+  // (mostly normals, occasional special) rolled from that zone's rarity weights.
+  #spawnCrates() {
+    let inner = 0;
+    ZONES.forEach((zone, zi) => {
+      const n = GAME.crate.perZone[zi] || 0;
+      for (let i = 0; i < n; i++) {
+        const { x, y } = this.#randInRing(inner, zone.maxR);
+        const rarity = pickRarity(zone.weights);
+        const items = [];
+        for (let k = 0; k < GAME.crate.items; k++) {
+          if (Math.random() < GAME.crate.specialChance) {
+            items.push({ kind: "special", typeKey: SPECIALS[(Math.random() * SPECIALS.length) | 0].key });
+          } else {
+            items.push({
+              kind: "normal",
+              typeKey: NORMAL_TYPES[(Math.random() * NORMAL_TYPES.length) | 0].key,
+              rarity: pickRarity(zone.weights),
+            });
+          }
+        }
+        const crate = new Crate({ x, y, rarity, items });
+        this.crates.push(crate);
+        this.engine.addEntity(crate);
+      }
+      inner = zone.maxR;
+    });
+  }
+
+  // Walk into a crate to open it: all its items are granted at once.
+  #openCrates() {
+    const p = this.player;
+    if (!p || p.dead) return;
+    for (const c of this.crates) {
+      if (c.dead) continue;
+      const reach = p.radius + c.radius;
+      const dx = c.x - p.x;
+      const dy = c.y - p.y;
+      if (dx * dx + dy * dy <= reach * reach) {
+        c.dead = true;
+        for (const it of c.items) this.#applyItem(it);
+        this.upgradeHud.refresh(this.upgrades);
+        this.#burst(c.x, c.y, RARITY_COLOR[c.rarity], 18);
+        this.engine.camera.shake(5);
+      }
+    }
+  }
+
+  // Apply one upgrade item (from a crate or a pickup) to the player's inventory.
+  #applyItem(it) {
+    if (it.kind === "special") {
+      this.upgrades.collectSpecial(it.typeKey);
+      this.#syncDrones();
+    } else {
+      this.upgrades.collectNormal(it.typeKey, it.rarity);
+      this.#applyStats();
+    }
+  }
+
   #randInRing(r0, r1) {
     const a = Math.random() * Math.PI * 2;
     const r = Math.sqrt(r0 * r0 + Math.random() * (r1 * r1 - r0 * r0)); // uniform by area
@@ -496,6 +640,7 @@ export class Game {
       camera: this.engine.camera,
       bounds: this.bounds,
       color: c.color,
+      turret: this.weapon?.turret || "single",
     });
     this.player.team = "player";
     this.engine.addEntity(this.player);
@@ -503,7 +648,7 @@ export class Game {
 
     this.nameLabel = new Text({
       text: this.profile.displayName,
-      style: { fill: COLORS.hudText, fontFamily: "Arial", fontSize: 13, fontWeight: "bold" },
+      style: { fill: COLORS.hudText, fontFamily: "Ubuntu, Arial", fontSize: 13, fontWeight: "bold" },
     });
     this.nameLabel.anchor.set(0.5);
     this.nameLabel.position.set(0, this.player.radius + 18);
@@ -561,7 +706,7 @@ export class Game {
   #addLabel(tank, text, fill) {
     const label = new Text({
       text,
-      style: { fill, fontFamily: "Arial", fontSize: 12, fontWeight: "bold" },
+      style: { fill, fontFamily: "Ubuntu, Arial", fontSize: 12, fontWeight: "bold" },
     });
     label.anchor.set(0.5);
     label.position.set(0, -(tank.radius + 34));
@@ -608,6 +753,7 @@ export class Game {
     this.bots = [];
     this.guardians = [];
     this.pickups = [];
+    this.crates = [];
     this.sentryDrone = null;
     this.lootDrone = null;
     this._playerHitCd = 0;

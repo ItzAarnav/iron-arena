@@ -6,7 +6,7 @@
 import { el } from "./dom.js";
 
 export class WaitingRoom {
-  // callbacks: { onCosmetics(), onWeapon() }
+  // callbacks: { onCosmetics(), onArsenal() }
   constructor(callbacks) {
     this.cb = callbacks;
 
@@ -18,7 +18,7 @@ export class WaitingRoom {
 
     this.actions = el("div", { class: "ia-waiting-actions" }, [
       el("button", { class: "ia-btn", text: "Cosmetics", on: { click: () => this.cb.onCosmetics() } }),
-      el("button", { class: "ia-btn", text: "Weapon", on: { click: () => this.cb.onWeapon() } }),
+      el("button", { class: "ia-btn", text: "Arsenal", on: { click: () => this.cb.onArsenal() } }),
     ]);
 
     this.root = el("div", { class: "ia-overlay ia-waiting ia-hidden" }, [banner, this.actions]);

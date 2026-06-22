@@ -16,8 +16,9 @@ export class Fog {
     this.#draw();
   }
 
-  update(dt) {
-    this.radius = Math.max(GAME.fog.minRadius, this.radius - GAME.fog.shrinkRate * dt);
+  // `mul` accelerates the shrink during the endgame (see GAME.endgame).
+  update(dt, mul = 1) {
+    this.radius = Math.max(GAME.fog.minRadius, this.radius - GAME.fog.shrinkRate * mul * dt);
     this.#draw();
   }
 

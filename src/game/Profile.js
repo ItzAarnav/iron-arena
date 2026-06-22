@@ -2,6 +2,8 @@
 // chosen cosmetic + weapon, and accumulated Iron Path XP. Persisted to
 // localStorage so it survives reloads (there's no server yet).
 
+import { levelForXp } from "./IronPath.js";
+
 const KEY = "ironArena.profile";
 
 export class Profile {
@@ -15,6 +17,19 @@ export class Profile {
   // Falls back to "Unnamed Tank" when the username field is blank.
   get displayName() {
     return this.username.trim() || "Unnamed Tank";
+  }
+
+  // Iron Path level derived from accumulated XP (see IronPath.js).
+  get ironPathLevel() {
+    return levelForXp(this.ironPathXp);
+  }
+
+  // Award match XP. Returns the level gained (0 if none) so callers can flag a
+  // new weapon unlock.
+  addIronPathXp(amount) {
+    const before = this.ironPathLevel;
+    this.ironPathXp += Math.max(0, Math.round(amount));
+    return this.ironPathLevel - before;
   }
 
   static load() {

@@ -5,7 +5,7 @@
 import { el } from "./dom.js";
 
 export class MainMenu {
-  // callbacks: { onPlay(), onIronPath(), onCosmetics(), onWeapon() }
+  // callbacks: { onPlay(), onIronPath(), onCosmetics(), onArsenal() }
   constructor(profile, callbacks) {
     this.profile = profile;
     this.cb = callbacks;
@@ -27,7 +27,7 @@ export class MainMenu {
       el("button", { class: "ia-btn ia-primary", text: "PLAY", on: { click: () => this.cb.onPlay() } }),
       el("button", { class: "ia-btn", text: "IRON PATH", on: { click: () => this.cb.onIronPath() } }),
       el("button", { class: "ia-btn", text: "COSMETICS", on: { click: () => this.cb.onCosmetics() } }),
-      el("button", { class: "ia-btn", text: "WEAPON LOCKER", on: { click: () => this.cb.onWeapon() } }),
+      el("button", { class: "ia-btn", text: "ARSENAL", on: { click: () => this.cb.onArsenal() } }),
     ]);
 
     this.root = el("div", { class: "ia-overlay ia-modal ia-hidden" }, [col]);

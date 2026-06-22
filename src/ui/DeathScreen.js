@@ -10,11 +10,13 @@ export class DeathScreen {
     this.killedBy = el("span", { class: "ia-v" });
     this.survival = el("span", { class: "ia-v" });
     this.kills = el("span", { class: "ia-v" });
+    this.xp = el("span", { class: "ia-v" });
 
     const stats = el("div", { class: "ia-stats" }, [
       el("span", { class: "ia-k", text: "Killed By" }), this.killedBy,
       el("span", { class: "ia-k", text: "Survival Time" }), this.survival,
       el("span", { class: "ia-k", text: "Kills" }), this.kills,
+      el("span", { class: "ia-k", text: "Iron Path XP" }), this.xp,
     ]);
 
     const buttons = el("div", { class: "ia-col" }, [
@@ -36,6 +38,7 @@ export class DeathScreen {
     this.killedBy.textContent = stats.killedBy;
     this.survival.textContent = `${stats.survival.toFixed(1)}s`;
     this.kills.textContent = String(stats.kills);
+    this.xp.textContent = `+${stats.xp ?? 0}`;
     this.root.classList.remove("ia-hidden");
   }
 

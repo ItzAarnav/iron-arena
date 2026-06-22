@@ -40,7 +40,7 @@ export class Hud {
   #text(size, weight, fill) {
     return new Text({
       text: "",
-      style: { fill, fontFamily: "Arial", fontSize: size, fontWeight: weight },
+      style: { fill, fontFamily: "Ubuntu, Arial", fontSize: size, fontWeight: weight },
     });
   }
 

@@ -15,13 +15,17 @@ import { MainMenu } from "../ui/MainMenu.js";
 import { WaitingRoom } from "../ui/WaitingRoom.js";
 import { DeathScreen } from "../ui/DeathScreen.js";
 import { WinnerScreen } from "../ui/WinnerScreen.js";
-import { CosmeticsPanel, WeaponPanel, IronPathPanel } from "../ui/LockerPanels.js";
+import { CosmeticsPanel, ArsenalPanel, IronPathPanel } from "../ui/LockerPanels.js";
 
 export class GameFlow {
   constructor(engine, input) {
     this.engine = engine;
     this.input = input;
     this.profile = Profile.load();
+
+    // Which base screen is showing ("menu" | "waiting" | other). Panels float
+    // above it; only one base screen + at most one panel is ever visible.
+    this._screen = "menu";
 
     this.game = new Game(engine, input, {
       onCountdown: (s) => this.waiting.setCountdown(s),
@@ -30,20 +34,21 @@ export class GameFlow {
       onWin: (stats) => this.winnerScreen.show(stats),
     });
 
-    // Customization panels (shared by the menu and the waiting room).
-    this.cosmetics = new CosmeticsPanel(this.profile, (i) => this.#selectCosmetic(i), () => this.#closePanels());
-    this.weapon = new WeaponPanel(this.profile, (i) => this.#selectWeapon(i), () => this.#closePanels());
-    this.ironPath = new IronPathPanel(this.profile, () => this.#closePanels());
+    // Customization panels (shared by the menu and the waiting room). Their Back
+    // button returns to whatever base screen opened them.
+    this.cosmetics = new CosmeticsPanel(this.profile, (i) => this.#selectCosmetic(i), () => this.#backFromPanel());
+    this.arsenal = new ArsenalPanel(this.profile, (i) => this.#selectWeapon(i), () => this.#backFromPanel());
+    this.ironPath = new IronPathPanel(this.profile, () => this.#backFromPanel());
 
     this.menu = new MainMenu(this.profile, {
       onPlay: () => this.#play(),
       onIronPath: () => this.#openPanel(this.ironPath),
       onCosmetics: () => this.#openPanel(this.cosmetics),
-      onWeapon: () => this.#openPanel(this.weapon),
+      onArsenal: () => this.#openPanel(this.arsenal),
     });
     this.waiting = new WaitingRoom({
       onCosmetics: () => this.#openPanel(this.cosmetics),
-      onWeapon: () => this.#openPanel(this.weapon),
+      onArsenal: () => this.#openPanel(this.arsenal),
     });
     this.death = new DeathScreen({
       onMenu: () => this.#toMenu(),
@@ -62,6 +67,7 @@ export class GameFlow {
     this.waiting.hide();
     this.death.hide();
     this.winnerScreen.hide();
+    this._screen = "menu";
     this.game.showMenuBackground();
     this.menu.show();
   }
@@ -72,17 +78,19 @@ export class GameFlow {
     this.death.hide();
     this.winnerScreen.hide();
     this.#closePanels();
+    this._screen = "waiting";
     this.game.enterWaiting(this.profile);
     this.waiting.show();
   }
 
   #onMatchStart() {
     this.waiting.hide();
-    this.#closePanels(); // cosmetics/weapon are now locked
+    this.#closePanels(); // cosmetics/arsenal are now locked
+    this._screen = "playing";
   }
 
   #onMatchEnd(stats) {
-    // No Iron Path XP logic yet — just show the run results.
+    this._screen = "dead";
     this.death.show(stats);
   }
 
@@ -100,14 +108,25 @@ export class GameFlow {
     this.game.setWeapon(i);
   }
 
+  // Open a panel as the single active screen. From the main menu we hide the
+  // menu entirely (fixes panels opening behind it); in the waiting room the
+  // banner stays visible behind the panel so the live tank preview shows.
   #openPanel(panel) {
     this.#closePanels();
+    if (this._screen === "menu") this.menu.hide();
     panel.show();
+  }
+
+  // Back button: close the panel and restore the base screen it came from.
+  #backFromPanel() {
+    this.#closePanels();
+    if (this._screen === "menu") this.menu.show();
+    // waiting room: its overlay was never hidden, nothing to restore.
   }
 
   #closePanels() {
     this.cosmetics.hide();
-    this.weapon.hide();
+    this.arsenal.hide();
     this.ironPath.hide();
   }
 }
